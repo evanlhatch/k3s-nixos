@@ -144,10 +144,11 @@
             rolePath
             locationProfilePath
             inputs.disko.nixosModules.disko
-            (pkgs.lib.mkIf (specialArgsOverride ? location && specialArgsOverride.location == "hetzner") ./disko-configs/hetzner-disko-layout.nix)
-            (pkgs.lib.mkIf (specialArgsOverride ? location && specialArgsOverride.location == "local") ./disko-configs/generic-disko-layout.nix)
-            (pkgs.lib.mkIf (machineHardwareConfigPath != null) machineHardwareConfigPath)
-          ] ++ extraModules;
+          ]
+          ++ (pkgs.lib.optional (specialArgsOverride ? location && specialArgsOverride.location == "hetzner") ./disko-configs/hetzner-disko-layout.nix)
+          ++ (pkgs.lib.optional (specialArgsOverride ? location && specialArgsOverride.location == "local") ./disko-configs/generic-disko-layout.nix)
+          ++ (pkgs.lib.optional (machineHardwareConfigPath != null) machineHardwareConfigPath)
+          ++ extraModules;
           specialArgs = {
             # ... remove config.sops.secrets access ... #
             # Common arguments for all nodes
@@ -173,7 +174,7 @@
           rolePath = ./k3s-cluster/roles/k3s-control.nix;
           locationProfilePath = ./k3s-cluster/locations/local.nix;
           extraModules = [
-            (stateVersionModule "24.11")
+            (stateVersionModule "25.05")
           ];
           specialArgsOverride = {
             hostname = "thinkcenter-1";
@@ -185,7 +186,10 @@
         "hetzner-control-plane" = mkNixosSystem {
           rolePath = ./k3s-cluster/roles/k3s-control.nix;
           locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          machineHardwareConfigPath = ./hardware/hetzner-hardware.nix; # Generic Hetzner hardware defaults
+          # Hardware config is now in hardware info directory and is just for reference
+          extraModules = [
+            (stateVersionModule "25.05")
+          ];
           specialArgsOverride = {
             hostname = getEnv "NODE_HOSTNAME" "k3s-hcloud-cp";
             isFirstControlPlane = (getEnv "IS_FIRST_CONTROL_PLANE" "true") == "true";
@@ -197,7 +201,7 @@
         "hetzner-cpx21-control-plane-archetype" = mkNixosSystem {
           rolePath = ./k3s-cluster/roles/k3s-control.nix;
           locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          #machineHardwareConfigPath = ./hardware/hetzner/cpx21/hardware-configuration.nix; # Use the specific cpx21 hardware config
+          # Hardware config is now in hardware info directory and is just for reference
           extraModules = [
             (stateVersionModule "25.05")
           ];
@@ -211,7 +215,10 @@
         "hetzner-worker" = mkNixosSystem {
           rolePath = ./k3s-cluster/roles/k3s-worker.nix;
           locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          #machineHardwareConfigPath = ./hardware/hetzner-hardware.nix; # Generic Hetzner hardware defaults
+          # Hardware config is now in hardware info directory and is just for reference
+          extraModules = [
+            (stateVersionModule "25.05")
+          ];
           specialArgsOverride = {
             hostname = getEnv "NODE_HOSTNAME" "k3s-hcloud-worker";
             isFirstControlPlane = false; # Workers are never first control plane
@@ -224,7 +231,7 @@
         "my-hcloud-control01" = mkNixosSystem {
           rolePath = ./k3s-cluster/roles/k3s-control.nix;
           locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          #machineHardwareConfigPath = ./hardware/hetzner/cpx31/hardware-configuration.nix; # Updated to new path
+          # Hardware config is now in hardware info directory and is just for reference
           extraModules = [
             (stateVersionModule "25.05")
           ];
@@ -239,7 +246,7 @@
         "cpx21-control-1" = mkNixosSystem {
           rolePath = ./k3s-cluster/roles/k3s-control.nix;
           locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          #machineHardwareConfigPath = ./hardware/hetzner/cpx21/hardware-configuration.nix;
+          # Hardware config is now in hardware info directory and is just for reference
           extraModules = [
             (stateVersionModule "25.05")
             {
@@ -273,7 +280,8 @@
             isFirstControlPlane = true;
             hetznerPublicInterface = "eth0";
             hetznerPrivateInterface = "ens10";
-            enableInfisicalAgent = true; # This will be used by the module
+            # Disable infisical agent during evaluation to avoid errors with missing secrets
+            enableInfisicalAgent = builtins.getEnv "ENABLE_INFISICAL" == "1";
             location = "hetzner";
           };
         };

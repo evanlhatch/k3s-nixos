@@ -131,7 +131,6 @@
         {
           rolePath,
           locationProfilePath,
-          diskoConfigPath,
           machineHardwareConfigPath ? null,
           extraModules ? [ ],
           specialArgsOverride ? { },
@@ -145,8 +144,9 @@
             rolePath
             locationProfilePath
             inputs.disko.nixosModules.disko
-            diskoConfigPath
-            machineHardwareConfigPath
+            (pkgs.lib.mkIf (specialArgsOverride ? location && specialArgsOverride.location == "hetzner") ./disko-configs/hetzner-disko-layout.nix)
+            (pkgs.lib.mkIf (specialArgsOverride ? location && specialArgsOverride.location == "local") ./disko-configs/generic-disko-layout.nix)
+            (pkgs.lib.mkIf (machineHardwareConfigPath != null) machineHardwareConfigPath)
           ] ++ extraModules;
           specialArgs = {
             # ... remove config.sops.secrets access ... #
@@ -172,26 +172,24 @@
         "thinkcenter-1" = mkNixosSystem {
           rolePath = ./k3s-cluster/roles/k3s-control.nix;
           locationProfilePath = ./k3s-cluster/locations/local.nix;
-          machineHardwareConfigPath = ./hardware/selfhost/thinkcenter-1/hardware-configuration.nix;
-
-          diskoConfigPath = ./hardware/selfhost/thinkcenter-1/disko-layout.nix;
           extraModules = [
             (stateVersionModule "24.11")
           ];
           specialArgsOverride = {
             hostname = "thinkcenter-1";
-            isFirstControlPlane = false;
+            isFirstControlPlane = true;
+            location = "local";
           };
         };
 
         "hetzner-control-plane" = mkNixosSystem {
           rolePath = ./k3s-cluster/roles/k3s-control.nix;
           locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          diskoConfigPath = ./hardware/common/disko/hetzner-single-disk.nix; # Generic Hetzner hardware defaults
           machineHardwareConfigPath = ./hardware/hetzner-hardware.nix; # Generic Hetzner hardware defaults
           specialArgsOverride = {
             hostname = getEnv "NODE_HOSTNAME" "k3s-hcloud-cp";
             isFirstControlPlane = (getEnv "IS_FIRST_CONTROL_PLANE" "true") == "true";
+            location = "hetzner";
           };
         };
 
@@ -199,26 +197,25 @@
         "hetzner-cpx21-control-plane-archetype" = mkNixosSystem {
           rolePath = ./k3s-cluster/roles/k3s-control.nix;
           locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          # Direct paths for CPX21:
-          diskoConfigPath = ./hardware/hetzner/cpx21/disko-layout.nix; # Corrected path
-          machineHardwareConfigPath = ./hardware/hetzner/cpx21/hardware-configuration.nix; # Use the specific cpx21 hardware config
+          #machineHardwareConfigPath = ./hardware/hetzner/cpx21/hardware-configuration.nix; # Use the specific cpx21 hardware config
           extraModules = [
             (stateVersionModule "25.05")
           ];
           specialArgsOverride = {
             hostname = getEnv "NODE_HOSTNAME" "k3s-cpx21-cp"; # Hostname template for CPX21 CP
             isFirstControlPlane = (getEnv "IS_FIRST_CONTROL_PLANE" "true") == "true";
+            location = "hetzner";
           };
         };
 
         "hetzner-worker" = mkNixosSystem {
           rolePath = ./k3s-cluster/roles/k3s-worker.nix;
           locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          diskoConfigPath = ./hardware/common/disko/hetzner-single-disk.nix; # Generic Hetzner hardware defaults
-          machineHardwareConfigPath = ./hardware/hetzner-hardware.nix; # Generic Hetzner hardware defaults
+          #machineHardwareConfigPath = ./hardware/hetzner-hardware.nix; # Generic Hetzner hardware defaults
           specialArgsOverride = {
             hostname = getEnv "NODE_HOSTNAME" "k3s-hcloud-worker";
             isFirstControlPlane = false; # Workers are never first control plane
+            location = "hetzner";
           };
         };
 
@@ -227,14 +224,14 @@
         "my-hcloud-control01" = mkNixosSystem {
           rolePath = ./k3s-cluster/roles/k3s-control.nix;
           locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          diskoConfigPath = ./hardware/hetzner/cpx31/disko-layout.nix;
-          machineHardwareConfigPath = ./hardware/hetzner/cpx31/hardware-configuration.nix; # Updated to new path
+          #machineHardwareConfigPath = ./hardware/hetzner/cpx31/hardware-configuration.nix; # Updated to new path
           extraModules = [
             (stateVersionModule "25.05")
           ];
           specialArgsOverride = {
             hostname = "my-hcloud-control01";
             isFirstControlPlane = true;
+            location = "hetzner";
           };
         };
 
@@ -242,8 +239,7 @@
         "cpx21-control-1" = mkNixosSystem {
           rolePath = ./k3s-cluster/roles/k3s-control.nix;
           locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          diskoConfigPath = ./hardware/hetzner/cpx21/disko-layout.nix;
-          machineHardwareConfigPath = ./hardware/hetzner/cpx21/hardware-configuration.nix;
+          #machineHardwareConfigPath = ./hardware/hetzner/cpx21/hardware-configuration.nix;
           extraModules = [
             (stateVersionModule "25.05")
             {
@@ -278,6 +274,7 @@
             hetznerPublicInterface = "eth0";
             hetznerPrivateInterface = "ens10";
             enableInfisicalAgent = true; # This will be used by the module
+            location = "hetzner";
           };
         };
       }; # End nixosConfigurations

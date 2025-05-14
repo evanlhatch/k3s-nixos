@@ -1,0 +1,32 @@
+# Environment variables file - CONTAINS SECRETS, MUST BE IGNORED
+.env
+
+# Devenv files - Local development environment state
+.devenv*
+devenv.local.nix
+
+# Direnv files - Shell environment loader state
+.direnv
+
+# Nix build outputs - Symlinks created by nix build
+result
+result-*
+
+# Go temporary directories - Created by Go tools
+# .go/ # Uncomment if your Go workflow creates a .go directory in the root
+
+# Editor/IDE files - Local IDE settings or temporary files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*~
+
+# OS generated files - macOS and Windows temp files
+.DS_Store
+Thumbs.db
+
+# nixos-anywhere command history - May contain paths to temporary secret files
+# Consider ignoring if you run this command frequently and don't want history tracked
+nixos-anywhere commands.md

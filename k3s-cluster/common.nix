@@ -4,6 +4,7 @@
   config,
   lib,
   pkgs,
+  specialArgs,
   ...
 }: # specialArgs are available via config.specialArgs
 
@@ -12,7 +13,7 @@
   # \----- Hostname Configuration -----
 
   # Set from specialArgs.hostname, which defaults to the machine's name from machines.nix (via flake.nix)
-  networking.hostName = lib.mkDefault config.specialArgs.hostname;
+  networking.hostName = specialArgs.hostname;
 
   # \----- Localization -----
 
@@ -23,20 +24,22 @@
   # \----- Admin User Account -----
 
   # Create the admin user specified in commonNodeArguments (via specialArgs)
-  users.users.${config.specialArgs.adminUsername} = {
+  users.users.${specialArgs.adminUsername} = {
     isNormalUser = true;
     extraGroups = [
       "wheel"
       "networkmanager"
       "docker"
     ];
-    openssh.authorizedKeys.keys = [ config.specialArgs.adminSshPublicKey ];
+    openssh.authorizedKeys.keys = [ specialArgs.adminSshPublicKey ];
     shell = pkgs.fish;
   };
 
+ programs.fish.enable = true;
+
   # Add the same admin SSH key to the root user for initial provisioning or recovery
 
-  users.users.root.openssh.authorizedKeys.keys = [ config.specialArgs.adminSshPublicKey ];
+  users.users.root.openssh.authorizedKeys.keys = [ specialArgs.adminSshPublicKey ];
 
   # Sudo privileges for the wheel group (adminUser is typically in 'wheel')
 
@@ -47,7 +50,7 @@
   nixpkgs.config.allowUnfree = true; # Allow unfree packages if needed globally
 
   nix = {
-    package = pkgs.nixFlakes; # Ensures the Flakes-aware Nix package is used
+    package = pkgs.nixVersions.stable; # Ensures the Flakes-aware Nix package is used
     settings = {
       auto-optimise-store = true;
       experimental-features = [
@@ -58,7 +61,7 @@
       trusted-users = [
         "root"
         "@wheel"
-        config.specialArgs.adminUsername
+        specialArgs.adminUsername
       ];
     };
     # Automatic garbage collection

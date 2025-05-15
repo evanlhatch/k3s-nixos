@@ -1,5 +1,30 @@
 {
   "nodes": {
+    "blueprint": {
+      "inputs": {
+        "nixpkgs": [
+          "nixos-facter-cli",
+          "nixpkgs"
+        ],
+        "systems": [
+          "nixos-facter-cli",
+          "systems"
+        ]
+      },
+      "locked": {
+        "lastModified": 1744632722,
+        "narHash": "sha256-0chvqUV1Kzf8BMQ7MsH3CeicJEb2HeCpwliS77FGyfc=",
+        "owner": "numtide",
+        "repo": "blueprint",
+        "rev": "49bbd5d072b577072f4a1d07d4b0621ecce768af",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "blueprint",
+        "type": "github"
+      }
+    },
     "deploy-rs": {
       "inputs": {
         "flake-compat": "flake-compat",
@@ -64,6 +89,27 @@
         "type": "github"
       }
     },
+    "disko_3": {
+      "inputs": {
+        "nixpkgs": [
+          "nixos-facter-cli",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1744145203,
+        "narHash": "sha256-I2oILRiJ6G+BOSjY+0dGrTPe080L3pbKpc+gCV3Nmyk=",
+        "owner": "nix-community",
+        "repo": "disko",
+        "rev": "76c0a6dba345490508f36c1aa3c7ba5b6b460989",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "disko",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -101,6 +147,121 @@
         "type": "github"
       }
     },
+    "flake-utils": {
+      "inputs": {
+        "systems": [
+          "nixos-facter-cli",
+          "systems"
+        ]
+      },
+      "locked": {
+        "lastModified": 1731533236,
+        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "godoc": {
+      "inputs": {
+        "blueprint": [
+          "nixos-facter-cli",
+          "blueprint"
+        ],
+        "flake-utils": [
+          "nixos-facter-cli",
+          "flake-utils"
+        ],
+        "gomod2nix": "gomod2nix",
+        "nixpkgs": [
+          "nixos-facter-cli",
+          "nixpkgs"
+        ],
+        "systems": [
+          "nixos-facter-cli",
+          "systems"
+        ],
+        "treefmt-nix": [
+          "nixos-facter-cli",
+          "treefmt-nix"
+        ]
+      },
+      "locked": {
+        "lastModified": 1725981199,
+        "narHash": "sha256-QoXfZPi+k1dAh6p9uD8Ie64lECDm5XyoClmzhxWuDqs=",
+        "owner": "numtide",
+        "repo": "godoc",
+        "rev": "6657fc706efcd44a05bd7c80c20696c7513193c6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "godoc",
+        "type": "github"
+      }
+    },
+    "gomod2nix": {
+      "inputs": {
+        "flake-utils": [
+          "nixos-facter-cli",
+          "godoc",
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixos-facter-cli",
+          "godoc",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1722589758,
+        "narHash": "sha256-sbbA8b6Q2vB/t/r1znHawoXLysCyD4L/6n6/RykiSnA=",
+        "owner": "nix-community",
+        "repo": "gomod2nix",
+        "rev": "4e08ca09253ef996bd4c03afa383b23e35fe28a1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "gomod2nix",
+        "type": "github"
+      }
+    },
+    "hwinfo": {
+      "inputs": {
+        "blueprint": [
+          "nixos-facter-cli",
+          "blueprint"
+        ],
+        "nixpkgs": [
+          "nixos-facter-cli",
+          "nixpkgs"
+        ],
+        "systems": [
+          "nixos-facter-cli",
+          "systems"
+        ]
+      },
+      "locked": {
+        "lastModified": 1744896873,
+        "narHash": "sha256-eHwxXb4JpCJBg+h9dZGm9WbuzSs6DzYqVREqthCtPaw=",
+        "owner": "numtide",
+        "repo": "hwinfo",
+        "rev": "05d02266f5e88071c672cb4fc6ffc6b7710df7c8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "hwinfo",
+        "type": "github"
+      }
+    },
     "nixos-anywhere": {
       "inputs": {
         "disko": "disko_2",
@@ -126,17 +287,44 @@
         "type": "github"
       }
     },
+    "nixos-facter-cli": {
+      "inputs": {
+        "blueprint": "blueprint",
+        "disko": "disko_3",
+        "flake-utils": "flake-utils",
+        "godoc": "godoc",
+        "hwinfo": "hwinfo",
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "systems": "systems_2",
+        "treefmt-nix": "treefmt-nix_2"
+      },
+      "locked": {
+        "lastModified": 1745850713,
+        "narHash": "sha256-V/SwlvglrkLfj+GhuO9ZbMNkbMUOrRjIeMXPykkwy/A=",
+        "owner": "numtide",
+        "repo": "nixos-facter",
+        "rev": "ebe1aa33ba58c6771629568d20e42b12bb188b31",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "nixos-facter",
+        "type": "github"
+      }
+    },
     "nixos-facter-modules": {
       "locked": {
         "lastModified": 1743671943,
         "narHash": "sha256-7sYig0+RcrR3sOL5M+2spbpFUHyEP7cnUvCaqFOBjyU=",
-        "owner": "numtide",
+        "owner": "nix-community",
         "repo": "nixos-facter-modules",
         "rev": "58ad9691670d293a15221d4a78818e0088d2e086",
         "type": "github"
       },
       "original": {
-        "owner": "numtide",
+        "owner": "nix-community",
         "repo": "nixos-facter-modules",
         "type": "github"
       }
@@ -203,6 +391,7 @@
         "deploy-rs": "deploy-rs",
         "disko": "disko",
         "nixos-anywhere": "nixos-anywhere",
+        "nixos-facter-cli": "nixos-facter-cli",
         "nixos-facter-modules": "nixos-facter-modules",
         "nixpkgs": "nixpkgs",
         "sops-nix": "sops-nix"
@@ -243,6 +432,21 @@
         "type": "github"
       }
     },
+    "systems_2": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    },
     "treefmt-nix": {
       "inputs": {
         "nixpkgs": [
@@ -256,6 +460,27 @@
         "owner": "numtide",
         "repo": "treefmt-nix",
         "rev": "8d404a69efe76146368885110f29a2ca3700bee6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "treefmt-nix",
+        "type": "github"
+      }
+    },
+    "treefmt-nix_2": {
+      "inputs": {
+        "nixpkgs": [
+          "nixos-facter-cli",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1744707583,
+        "narHash": "sha256-IPFcShGro/UUp8BmwMBkq+6KscPlWQevZi9qqIwVUWg=",
+        "owner": "numtide",
+        "repo": "treefmt-nix",
+        "rev": "49d05555ccdd2592300099d6a657cc33571f4fe0",
         "type": "github"
       },
       "original": {

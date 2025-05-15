@@ -14,15 +14,20 @@
     };
     nixos-anywhere = {
       url = "github:numtide/nixos-anywhere";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgs.follows = "nixpkgs"; # Keep follows for consistency
     };
     sops-nix = {
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nixos-facter-modules = {
-      url = "github:numtide/nixos-facter-modules"; # Corrected URL
-      # Removed: inputs.nixpkgs.follows = "nixpkgs"; # Fixes warning
+      url = "github:nix-community/nixos-facter-modules";
+      # Removed: inputs.nixpkgs.follows = "nixpkgs"; # <-- Removed this line to fix the warning
+    };
+    # Add the nixos-facter CLI tool as a separate input
+    nixos-facter-cli = {
+      url = "github:numtide/nixos-facter";
+      inputs.nixpkgs.follows = "nixpkgs"; # Keep follows for consistency
     };
   };
 
@@ -33,11 +38,24 @@
       deploy-rs,
       disko,
       sops-nix,
-      nixos-anywhere,
       nixos-facter-modules,
+      nixos-facter-cli,
+      nixos-anywhere, # Explicitly list nixos-anywhere here
       ...
     }@inputs:
     let
+      # Explicitly inherit all inputs used within this let block
+      inherit (inputs)
+        self
+        nixpkgs
+        deploy-rs
+        disko
+        sops-nix
+        nixos-facter-modules
+        nixos-facter-cli
+        nixos-anywhere # Inherit nixos-anywhere
+        ;
+
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
       lib = nixpkgs.lib;
@@ -132,6 +150,8 @@
             derivedDiskoConfigPath
             (stateVersionModule specialArgsResolved.nixosStateVersion)
             hardwareConfigModulePath
+            # If you intend to use the nixos-facter NixOS module, add it here:
+            # inputs.nixos-facter-modules.nixosModules.facter
           ] ++ extraModules;
           specialArgs = specialArgsResolved;
         };
@@ -189,8 +209,7 @@
             }
             // {
               hostname = name;
-            }
-            // (machineData.specialArgsOverride or { });
+            };
 
           finalHardwareConfigModulePath =
             machineData._hardwareConfigModulePath_override or /etc/nixos/hardware-configuration.nix;
@@ -233,7 +252,7 @@
             pkgs.tailscale
             deploy-rs.packages.${system}.deploy-rs
             nixos-anywhere.packages.${system}.default
-            inputs.nixos-facter-modules.packages.${system}.default # facter CLI
+            inputs.nixos-facter-cli.packages.${system}.default # <-- Corrected: Reference 'default' package from the new 'nixos-facter-cli' input
             disko.packages.${system}.disko
           ];
           buildDiskImage =
@@ -262,24 +281,44 @@
         mage = {
           type = "app";
           program = "${self.packages.${system}.mageWrappers}/bin/mage";
+          meta = with lib; {
+            description = "Mage wrapper for project tasks (check, deploy, etc.)";
+            # Add other relevant meta attributes if desired
+          };
         };
         recreateNode = {
           type = "app";
           program = "${self.packages.${system}.mageWrappers}/bin/mage-recreateNode";
+           meta = with lib; {
+            description = "App to redeploy a node using nixos-anywhere (destructive)";
+            # Add other relevant meta attributes if desired
+          };
         };
         deploy = {
           type = "app";
           program = "${self.packages.${system}.mageWrappers}/bin/mage-deploy";
+           meta = with lib; {
+            description = "App to deploy a NixOS configuration using deploy-rs";
+            # Add other relevant meta attributes if desired
+          };
         };
         recreateServer = {
           type = "app";
           program = "${self.packages.${system}.mageWrappers}/bin/mage-recreateServer";
+           meta = with lib; {
+            description = "App to recreate a Hetzner Cloud server (destructive)";
+            # Add other relevant meta attributes if desired
+          };
         };
         deleteAndRedeployServer = {
           type = "app";
           program = "${self.packages.${system}.mageWrappers}/bin/mage-deleteAndRedeployServer";
+           meta = with lib; {
+            description = "App to delete, recreate, and deploy to a Hetzner Cloud server (destructive)";
+            # Add other relevant meta attributes if desired
+          };
         };
-        default = self.apps.${system}.mage;
+        default = self.apps.${system}.mage; # Default app points to the mage wrapper
       };
 
       devShells.${system}.default = pkgs.mkShell {
@@ -292,7 +331,7 @@
           pkgs.tailscale
           deploy-rs.packages.${system}.deploy-rs
           nixos-anywhere.packages.${system}.default
-          inputs.nixos-facter-modules.packages.${system}.default # facter CLI
+          inputs.nixos-facter-cli.packages.${system}.default # <-- Corrected: Reference 'default' package from the new 'nixos-facter-cli' input
           disko.packages.${system}.disko
           pkgs.mage
           pkgs.go

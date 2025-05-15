@@ -1,0 +1,89 @@
+# ./machines.nix.example
+# Copy this file to ./machines.nix and define your actual nodes.
+# Add ./machines.nix to your .gitignore!
+
+{ lib, pkgs, getEnv, stateVersionModule }: # Arguments passed from flake.nix
+
+{
+  # Example local node (thinkcenter-1)
+  "thinkcenter-1" = {
+    location = "local";         # "local" or "hetzner"
+    nodeType = "control-init";  # "control-init", "control-join", or "worker"
+    # extraModules is for truly unique modules for this specific node.
+    # The stateVersionModule is now applied globally in flake.nix.
+    extraModules = [
+      # Add node-specific modules here if needed, e.g.:
+      # { sops.secrets.thinkcenter_specific_secret = {}; }
+    ];
+    # specialArgsOverride allows overriding commonNodeArguments for this node.
+    # Example: if thinkcenter-1 had a different admin username than the global default
+    # specialArgsOverride = {
+    #   adminUsername = "evan_local"; # Overrides commonNodeArguments.adminUsername for this node
+    # };
+    deploy = {
+      # Use getEnv to read deployment-specific variables from your .env file.
+      # Ensure these variables are defined in your .env (and .env.example for documentation).
+      sshHostname = getEnv "THINKCENTER_1_SSH_HOSTNAME" "";
+      sshUser = getEnv "THINKCENTER_1_SSH_USER" "";
+      # You can add other deploy-rs specific options here if needed.
+    };
+    # _hardwareConfigModulePath_override is used to provide a hardware config path
+    # other than the default /etc/nixos/hardware-configuration.nix.
+    # This is typically used for the dummy config for local checks, or if you manage
+    # hardware configs manually per-node in your repo (less common with nixos-anywhere).
+    # _hardwareConfigModulePath_override = ./hardware-info/selfhost/thinkpad-x1-extreme/hardware-configuration.nix; # Example if you had one
+  };
+
+  # Example Hetzner control plane node (cpx21-control-1)
+  "cpx21-control-1" = {
+    location = "hetzner";
+    nodeType = "control-init"; # or "control-join" for additional control planes
+    extraModules = [
+      # Add node-specific modules here if needed.
+      # Example: enable the Infisical Agent based on an environment variable
+      { specialArgs.enableInfisicalAgent = getEnv "CPX21_CONTROL_1_ENABLE_INFISICAL" "0" == "1"; }
+      # Define machine-specific SOPS secrets if they are not in commonSopsModule.
+      # K3S_CLUSTER_JOIN_TOKEN and TAILSCALE_PROVISION_KEY are in commonSopsModule.
+      # Example of a machine-specific secret definition if needed:
+      # { sops.secrets.another_secret_for_cpx21 = {}; }
+    ];
+    # specialArgsOverride can also be used here if needed.
+    deploy = {
+      sshHostname = getEnv "CPX21_CONTROL_1_SSH_HOSTNAME" "";
+      sshUser = getEnv "CPX21_CONTROL_1_SSH_USER" ""; # Typically "root" for Hetzner initial, or your admin user
+    };
+  };
+
+  # Example Hetzner control plane node (joining an existing cluster)
+  "my-hcloud-control01" = {
+    location = "hetzner";
+    nodeType = "control-join"; # Joins an existing control plane
+    extraModules = []; # Add node-specific modules here if needed.
+    deploy = {
+      sshHostname = getEnv "MY_HCLOUD_CONTROL01_SSH_HOSTNAME" "";
+      sshUser = getEnv "MY_HCLOUD_CONTROL01_SSH_USER" "";
+    };
+  };
+
+  # Example Hetzner worker node
+  "hetzner-worker-alpha" = {
+    location = "hetzner";
+    nodeType = "worker"; # A worker node
+    extraModules = []; # Add node-specific modules here if needed.
+    deploy = {
+      sshHostname = getEnv "HETZNER_WORKER_ALPHA_SSH_HOSTNAME" "";
+      sshUser = getEnv "HETZNER_WORKER_ALPHA_SSH_USER" "";
+    };
+  };
+
+  # Add your other machines here following the same structure...
+  # "another-node" = {
+  #   location = "hetzner";
+  #   nodeType = "worker";
+  #   extraModules = [];
+  #   deploy = {
+  #     sshHostname = getEnv "ANOTHER_NODE_SSH_HOSTNAME" "";
+  #     sshUser = getEnv "ANOTHER_NODE_SSH_USER" "";
+  #   };
+  # };
+}

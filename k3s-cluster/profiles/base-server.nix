@@ -9,8 +9,9 @@
 
 {
   imports = [
-    ../common.nix # Imports global settings like hostname, admin user, base Nix config
-                  # Adjust path if common.nix is located elsewhere relative to this file.
+    ../common.nix
+    # Imports global settings like hostname, admin user, base Nix config
+    # Adjust path if common.nix is located elsewhere relative to this file.
     # Modules specific to your k3s cluster servers:
     ../modules/tailscale.nix
     ../modules/infisical-agent.nix # Conditionally enabled via specialArgs from flake.nix
@@ -20,7 +21,7 @@
 
   # ----- LVM Support for Boot -----
   # Crucial if your Disko configuration uses LVM for the root filesystem
-  boot.initrd.lvm.enable = true; # << CORRECTED LINE
+  boot.initrd.services.lvm.enable = true;
 
   # ----- Server-Specific System Configuration -----
   boot.tmp.cleanOnBoot = true;
@@ -67,22 +68,23 @@
       X11Forwarding = false;
       AllowTcpForwarding = true; # Useful for kubectl port-forward, etc. Review security implications.
       PermitRootLogin = "prohibit-password"; # Root login with key only (key setup in common.nix)
-      PasswordAuthentication = false;        # Disable password-based SSH login entirely
-      KbdInteractiveAuthentication = false;  # Disable keyboard-interactive auth (often implies passwords)
+      PasswordAuthentication = false; # Disable password-based SSH login entirely
+      KbdInteractiveAuthentication = false; # Disable keyboard-interactive auth (often implies passwords)
       MaxAuthTries = 3;
     };
   };
 
   # Security hardening for servers
   security.auditd.enable = true; # Enable audit daemon
-  security.audit.enable = true;  # Enable kernel audit system (used by auditd)
+  security.audit.enable = true; # Enable kernel audit system (used by auditd)
 
   # Networking (useDHCP=false for servers, useNetworkd for explicit config)
   networking.useDHCP = lib.mkDefault false; # Servers typically have static or well-defined IP configurations
-  networking.useNetworkd = true;    # Use systemd-networkd for network configuration
-  systemd.network.enable = true;    # Ensure the service itself is enabled
+  networking.useNetworkd = true; # Use systemd-networkd for network configuration
+  systemd.network.enable = true; # Ensure the service itself is enabled
 
-  networking.firewall = { # Specific firewall rules can be added by roles/locations or further down here
+  networking.firewall = {
+    # Specific firewall rules can be added by roles/locations or further down here
     allowPing = true;
     logReversePathDrops = true;
   };
@@ -91,5 +93,4 @@
   services.xserver.enable = false;
   services.printing.enable = false;
   hardware.bluetooth.enable = false;
-  sound.enable = false;
 }

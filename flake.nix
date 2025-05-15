@@ -21,8 +21,8 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nixos-facter-modules = {
-      url = "github:nix-community/nixos-facter-modules"; # Or your preferred facter modules source
-      inputs.nixpkgs.follows = "nixpkgs";
+      url = "github:numtide/nixos-facter-modules"; # Corrected URL
+      # Removed: inputs.nixpkgs.follows = "nixpkgs"; # Fixes warning
     };
   };
 
@@ -35,12 +35,12 @@
       sops-nix,
       nixos-anywhere,
       nixos-facter-modules,
-      ... # Allow other inputs if present
+      ...
     }@inputs:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
-      lib = nixpkgs.lib; # Shortcut for lib
+      lib = nixpkgs.lib;
 
       getEnv =
         name: defaultValue:
@@ -48,8 +48,6 @@
           value = builtins.getEnv name;
         in
         if value == "" then defaultValue else value;
-
-      # stateVersionModule is now defined here and used directly in mkNixosSystem
       stateVersionModule =
         version:
         { ... }:
@@ -65,26 +63,22 @@
           ...
         }:
         {
-          sops.age.keyFile = "/etc/sops/age/key.txt"; # Deployed securely by nixos-anywhere via --extra-files
+          sops.age.keyFile = "/etc/sops/age/key.txt";
           sops.age.generateKey = false;
-          sops.validateSopsFiles = false; # Set to true for production checks if desired
-
-          # Common SOPS secrets (keys must exist in ./sops.secrets.yaml)
+          sops.validateSopsFiles = false;
           sops.secrets.infisical_client_id = { };
           sops.secrets.infisical_client_secret = { };
           sops.secrets.infisical_address = { };
-          sops.secrets.K3S_CLUSTER_JOIN_TOKEN = { }; # For joining nodes
-          sops.secrets.TAILSCALE_PROVISION_KEY = { }; # For provisioning Tailscale
-
-          sops.defaultSopsFile = "/etc/nixos/secrets.sops.yaml"; # Path where encrypted SOPS file is deployed
-
+          sops.secrets.K3S_CLUSTER_JOIN_TOKEN = { };
+          sops.secrets.TAILSCALE_PROVISION_KEY = { };
+          sops.defaultSopsFile = "/etc/nixos/secrets.sops.yaml";
           system.activationScripts.deploySopsFile =
             lib.mkIf (config.sops.defaultSopsFile != null && builtins.pathExists ./sops.secrets.yaml)
               {
                 text = ''
                   echo "Copying encrypted sops file to target system..."
                   mkdir -p "$(dirname "${config.sops.defaultSopsFile}")"
-                  cp ${./sops.secrets.yaml} "${config.sops.defaultSopsFile}" # ./sops.secrets.yaml is your encrypted file at flake root
+                  cp ${./sops.secrets.yaml} "${config.sops.defaultSopsFile}"
                   chmod 0400 "${config.sops.defaultSopsFile}"
                   echo "Encrypted sops file deployed to ${config.sops.defaultSopsFile}"
                 '';
@@ -94,15 +88,14 @@
         };
 
       commonNodeArguments = {
-        k3sControlPlaneAddr = getEnv "K3S_CONTROL_PLANE_ADDR" "https://REPLACE_ME_K3S_API_ENDPOINT:6443";
+        k3sControlPlaneAddr = getEnv "K3S_CONTROL_PLANE_ADDR" "https_REPLACE_ME_K3S_API_ENDPOINT_6443";
         adminUsername = getEnv "ADMIN_USERNAME" "nixos_admin";
-        adminSshPublicKey = getEnv "ADMIN_SSH_PUBLIC_KEY" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB_REPLACE_ME_YOUR_PUBLIC_KEY";
-        nixosStateVersion = getEnv "NIXOS_STATE_VERSION" "25.05"; # Global state version
+        adminSshPublicKey = getEnv "ADMIN_SSH_PUBLIC_KEY" "ssh-ed25519 REPLACE_ME_WITH_YOUR_PUBLIC_KEY";
+        nixosStateVersion = getEnv "NIXOS_STATE_VERSION" "25.05";
         hetznerPublicInterface = getEnv "HETZNER_PUBLIC_INTERFACE" "eth0";
         hetznerPrivateInterface = getEnv "HETZNER_PRIVATE_INTERFACE" "ens10";
       };
 
-      # Mappings for deriving paths and settings from location and nodeType
       rolePathMappings = {
         control = ./k3s-cluster/roles/k3s-control.nix;
         worker = ./k3s-cluster/roles/k3s-worker.nix;
@@ -116,35 +109,35 @@
         local = ./disko-configs/generic-disko-layout.nix;
       };
 
+      # Path to the dummy hardware config for local pure checks
+      dummyHardwareConfigPath = ./dummy-hardware-config.nix;
+
       mkNixosSystem =
         {
-          # Parameters are now mostly derived based on location and nodeType from allMachinesData
           derivedRolePath,
           derivedLocationProfilePath,
           derivedDiskoConfigPath,
-          extraModules ? [ ], # For machine-specific modules (e.g., unique SOPS secrets)
-          specialArgsResolved, # The fully merged specialArgs for this system
+          hardwareConfigModulePath, # This will be the resolved path to the hardware config module
+          extraModules ? [ ],
+          specialArgsResolved,
         }:
         nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [
             inputs.sops-nix.nixosModules.sops
             commonSopsModule
-            ./k3s-cluster/profiles/base-server.nix # Contains LVM initrd fix and imports common.nix
+            ./k3s-cluster/profiles/base-server.nix # Imports common.nix (which sets hostname, user, etc.)
             derivedRolePath
             derivedLocationProfilePath
             inputs.disko.nixosModules.disko
-            derivedDiskoConfigPath # Selected based on location
-
-            # << MODIFIED >> Automatically include the state version module using the resolved state version
-            (stateVersionModule specialArgsResolved.nixosStateVersion)
-
-            /etc/nixos/hardware-configuration.nix # Option A: Always use installer-generated hardware config
-          ] ++ extraModules; # For any other specific modules from machines.nix
+            derivedDiskoConfigPath
+            (stateVersionModule specialArgsResolved.nixosStateVersion) # Global state version
+            hardwareConfigModulePath # Use the explicitly passed hardware config module
+          ] ++ extraModules;
           specialArgs = specialArgsResolved;
         };
 
-      privateMachinesPath = ./machines.nix; # This file will be in your .gitignore
+      privateMachinesPath = ./machines.nix;
       allMachinesData =
         if builtins.pathExists privateMachinesPath then
           (import privateMachinesPath {
@@ -153,16 +146,16 @@
               pkgs
               getEnv
               stateVersionModule
-              ; # Pass helpers if machines.nix needs them for complex extraModules
-            # commonNixosStateVersion is no longer needed here as stateVersionModule is applied globally
+              ; # Pass helpers to machines.nix
           })
         else
           {
-            # Fallback if machines.nix is not found
+            # Fallback if machines.nix is not found (e.g., for CI or new users checking out the flake)
             "example-node" = {
               location = "local";
               nodeType = "control-init";
-              # extraModules = []; # No need for stateVersionModule here anymore
+              # For local pure checks, example-node explicitly uses the dummy hardware config
+              _hardwareConfigModulePath_override = dummyHardwareConfigPath;
               deploy = {
                 sshHostname = "localhost";
                 sshUser = getEnv "USER" "nixos";
@@ -176,9 +169,7 @@
         name: machineData:
         let
           roleKey = if machineData.nodeType == "worker" then "worker" else "control";
-          finalRolePath =
-            rolePathMappings.${roleKey}
-              or (throw "Invalid role derived from nodeType: '${machineData.nodeType}' for machine '${name}'. Must be 'control-init/join' or 'worker'.");
+          finalRolePath = rolePathMappings.${roleKey} example;
 
           finalLocationProfilePath =
             locationProfilePathMappings.${machineData.location}
@@ -190,31 +181,36 @@
 
           isFirstCp = (machineData.nodeType == "control-init");
 
-          # Layering specialArgs:
-          # 1. Flake commonNodeArguments (global defaults, can use getEnv)
-          # 2. Derived from nodeType & location (isFirstControlPlane, location itself)
-          # 3. Hostname (defaults to the machine's attribute name)
-          # 4. Instance specific overrides from machines.nix (machineData.specialArgsOverride)
           resolvedSpecialArgs =
             commonNodeArguments
             // {
               location = machineData.location;
               isFirstControlPlane = isFirstCp;
-            } # Derived values
+            }
             // {
               hostname = name;
-            } # Hostname defaults to the attribute name (e.g., "cpx21-control-1")
+            }
             // (machineData.specialArgsOverride or { });
+
+          # Determine the hardware configuration module path:
+          # 1. If _hardwareConfigModulePath_override is set in machineData (e.g., for example-node), use that path.
+          # 2. Otherwise, default to /etc/nixos/hardware-configuration.nix (for "Option A" during nixos-anywhere deployment).
+          finalHardwareConfigModulePath =
+            machineData._hardwareConfigModulePath_override or /etc/nixos/hardware-configuration.nix;
+
         in
         mkNixosSystem {
           derivedRolePath = finalRolePath;
           derivedLocationProfilePath = finalLocationProfilePath;
           derivedDiskoConfigPath = finalDiskoConfigPath;
+          hardwareConfigModulePath = finalHardwareConfigModulePath; # Pass the determined path
           extraModules = machineData.extraModules or [ ];
           specialArgsResolved = resolvedSpecialArgs;
         }
       ) allMachinesData;
 
+      # deploy.nodes, packages, apps, devShells (These remain as in the comprehensive version from Message #16,
+      # just ensure inputs.nixos-facter-modules.packages.${system}.default is in devShells.default.buildInputs)
       deploy.nodes = lib.mapAttrs (
         name: machineData:
         if !(machineData ? deploy) then
@@ -230,7 +226,7 @@
           }
       ) (lib.filterAttrs (name: data: data != null && data ? deploy) allMachinesData);
 
-      packages.${system} = # ... (remains the same as previous response)
+      packages.${system} =
         let
           mageEnvPath = lib.makeBinPath [
             pkgs.mage
@@ -262,16 +258,53 @@
           '';
         in
         {
-          hetznerK3sWorkerRawImage = buildDiskImage "hetzner-k3s-worker-image" "example-node" "raw" "20G"; # Update to a real node name
-          hetznerK3sControlRawImage = buildDiskImage "hetzner-k3s-control-image" "example-node" "raw" "20G"; # Update to a real node name
+          hetznerK3sWorkerRawImage = buildDiskImage "hetzner-k3s-worker-image" "example-node" "raw" "20G"; # Update example-node if it's not a worker
+          hetznerK3sControlRawImage = buildDiskImage "hetzner-k3s-control-image" "example-node" "raw" "20G";
           inherit mageWrappers;
         };
 
       apps.${system} = {
-        # ... (remains the same as previous response) ...
+        mage = {
+          type = "app";
+          program = "${self.packages.${system}.mageWrappers}/bin/mage";
+        };
+        recreateNode = {
+          type = "app";
+          program = "${self.packages.${system}.mageWrappers}/bin/mage-recreateNode";
+        };
+        deploy = {
+          type = "app";
+          program = "${self.packages.${system}.mageWrappers}/bin/mage-deploy";
+        };
+        recreateServer = {
+          type = "app";
+          program = "${self.packages.${system}.mageWrappers}/bin/mage-recreateServer";
+        };
+        deleteAndRedeployServer = {
+          type = "app";
+          program = "${self.packages.${system}.mageWrappers}/bin/mage-deleteAndRedeployServer";
+        };
+        default = self.apps.${system}.mage;
       };
-      devShells.${system}.default = {
-        # ... (remains the same as previous response, ensure shellHook is updated) ...
+
+      devShells.${system}.default = pkgs.mkShell {
+        buildInputs = [
+          pkgs.just
+          pkgs.hcloud
+          pkgs.kubectl
+          pkgs.kubernetes-helm
+          pkgs.fluxcd
+          pkgs.tailscale
+          deploy-rs.packages.${system}.deploy-rs
+          nixos-anywhere.packages.${system}.default
+          inputs.nixos-facter-modules.packages.${system}.default # facter CLI
+          disko.packages.${system}.disko
+          pkgs.mage
+          pkgs.go
+          pkgs.gotools
+          pkgs.gopls
+          pkgs.sops
+        ];
         shellHook = ''
           echo "---"
           echo "NixOS K3s Cluster DevEnv Activated"
@@ -279,9 +312,10 @@
           echo "Ensure ./sops.secrets.yaml is created and encrypted."
           echo "Ensure ./machines.nix exists and is populated (this file is gitignored)."
           echo "Ensure Disko layouts exist (e.g., ./disko-configs/hetzner-disko-layout.nix)."
-          echo "Hardware configs will be generated by nixos-anywhere in the installer (Option A)."
+          echo "Ensure ./dummy-hardware-config.nix exists for local pure flake checks."
+          echo "Hardware configs for actual deployments will use /etc/nixos/hardware-configuration.nix (Option A)."
           echo "State version is now applied globally to all machines."
-          echo "Hostname will be set from the machine name in machines.nix."
+          echo "Hostname will be set from the machine name in machines.nix via common.nix."
           echo "---"
         '';
       };

@@ -30,3 +30,7 @@ Thumbs.db
 # nixos-anywhere command history - May contain paths to temporary secret files
 # Consider ignoring if you run this command frequently and don't want history tracked
 nixos-anywhere commands.md
+*.lock
+machines.nix
+.env
+.envrc.local

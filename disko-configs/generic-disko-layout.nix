@@ -1,5 +1,10 @@
 # Modified disko layout for thinkcenter-1 with LVM and UEFI-only
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   disko.devices = {

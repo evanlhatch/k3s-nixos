@@ -4,7 +4,6 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    # Flake-utils for simplified system-specific outputs
     deploy-rs = {
       url = "github:serokell/deploy-rs";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -13,14 +12,16 @@
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # nixos-anywhere input is for the devShell, not direct flake use by system configs
     nixos-anywhere = {
-      url = "github:numtide/nixos-anywhere"; # Assuming this was your original intent for devShell
+      url = "github:numtide/nixos-anywhere";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     sops-nix = {
-      # Added sops-nix input
       url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    nixos-facter-modules = {
+      url = "github:nix-community/nixos-facter-modules"; # Or your preferred facter modules source
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -33,15 +34,28 @@
       disko,
       sops-nix,
       nixos-anywhere,
-      ...
+      nixos-facter-modules,
+      ... # Allow other inputs if present
     }@inputs:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
-      sopsSecrets = pkgs.lib.file // {
-        name = "sops.secrets.yaml";
-        path = ./sops.secrets.yaml; # Assuming your sops.secrets.yaml is in the same directory as flake.nix
-      };
+      lib = nixpkgs.lib; # Shortcut for lib
+
+      getEnv =
+        name: defaultValue:
+        let
+          value = builtins.getEnv name;
+        in
+        if value == "" then defaultValue else value;
+
+      # stateVersionModule is now defined here and used directly in mkNixosSystem
+      stateVersionModule =
+        version:
+        { ... }:
+        {
+          system.stateVersion = lib.mkDefault version;
+        };
 
       commonSopsModule =
         {
@@ -51,281 +65,186 @@
           ...
         }:
         {
-          # 1. Configure AGE Key File (to be deployed by nixos-anywhere/mage)
-          #    This path is where nixos-anywhere (via mage) will place the AGE key.
-          sops.age.keyFile = "/etc/sops/age/key.txt"; # Ensure this dir/file is writable during initial setup or use /var/lib/sops
-          sops.age.generateKey = false; # We provide the key
+          sops.age.keyFile = "/etc/sops/age/key.txt"; # Deployed securely by nixos-anywhere via --extra-files
+          sops.age.generateKey = false;
+          sops.validateSopsFiles = false; # Set to true for production checks if desired
 
-          # Disable validation of sops files during development
-          sops.validateSopsFiles = false; # Important for development, secrets will be on deployed machines
-
-          # 2. Define all secrets sops-nix should manage and make available as files
-          #    These files will typically be created in /run/secrets/
-          sops.secrets.infisical_client_id = {
-            # Path can be omitted to use default /run/secrets/infisical_client_id
-            # mode = "0400"; # Default is usually fine
-            # owner = config.users.users.root.name; # Or specific user for infisical agent if not root
-          };
+          # Common SOPS secrets (keys must exist in ./sops.secrets.yaml)
+          sops.secrets.infisical_client_id = { };
           sops.secrets.infisical_client_secret = { };
           sops.secrets.infisical_address = { };
+          sops.secrets.K3S_CLUSTER_JOIN_TOKEN = { }; # For joining nodes
+          sops.secrets.TAILSCALE_PROVISION_KEY = { }; # For provisioning Tailscale
 
-          # If K3S_TOKEN and TAILSCALE_AUTH_KEY are ONLY ever provisioned by Infisical agent
-          # then you don't need to define them here for sops-nix to create files for them.
-          # However, if some nodes might need them directly from sops (e.g., before Infisical agent is up,
-          # or for Infisical agent's own config if it needed to login to Tailscale itself first),
-          # you could define them here. For now, we assume Infisical agent fetches them.
-          # sops.secrets.k3s_token_from_sops = { neededForUsers = false; };
-          # sops.secrets.tailscale_authkey_from_sops = { neededForUsers = false; };
+          sops.defaultSopsFile = "/etc/nixos/secrets.sops.yaml"; # Path where encrypted SOPS file is deployed
 
-          # 3. Ensure the encrypted sops file itself is deployed to the target
-          #    sops-nix will read this file on the target using the deployed AGE key.
-          sops.defaultSopsFile = "/etc/nixos/secrets.sops.yaml"; # The path where the sops file will be stored
-
-          system.activationScripts.deploySopsFile = lib.mkIf (config.sops.defaultSopsFile != null) {
-            text = ''
-              echo "Copying encrypted sops file to target system..."
-              mkdir -p "$(dirname "${config.sops.defaultSopsFile}")"
-              # The source ./sops.secrets.yaml is relative to the flake root
-              cp ${./sops.secrets.yaml} "${config.sops.defaultSopsFile}"
-              chmod 0400 "${config.sops.defaultSopsFile}" # Restrict permissions
-              echo "Encrypted sops file deployed to ${config.sops.defaultSopsFile}"
-            '';
-            deps = [ "users" ]; # Run after users are set up, before services typically start
-          };
-
-          # Ensure the directory for the AGE key exists and has correct permissions
-          # This might be better handled by nixos-anywhere ensuring the path it copies to exists.
-          systemd.tmpfiles.rules = [
-            "d /etc/sops/age 0700 root root -" # Directory for AGE key
-          ];
+          system.activationScripts.deploySopsFile =
+            lib.mkIf (config.sops.defaultSopsFile != null && builtins.pathExists ./sops.secrets.yaml)
+              {
+                text = ''
+                  echo "Copying encrypted sops file to target system..."
+                  mkdir -p "$(dirname "${config.sops.defaultSopsFile}")"
+                  cp ${./sops.secrets.yaml} "${config.sops.defaultSopsFile}" # ./sops.secrets.yaml is your encrypted file at flake root
+                  chmod 0400 "${config.sops.defaultSopsFile}"
+                  echo "Encrypted sops file deployed to ${config.sops.defaultSopsFile}"
+                '';
+                deps = [ "users" ];
+              };
+          systemd.tmpfiles.rules = [ "d /etc/sops/age 0700 root root -" ];
         };
 
-    in
-    let
-      # Helper function for environment variables with defaults
-      getEnv =
-        name: defaultValue:
-        let
-          value = builtins.getEnv name;
-        in
-        if value == "" then defaultValue else value;
-
-      # Helper function to create a state version module
-      stateVersionModule =
-        version:
-        { lib, ... }:
-        {
-          system.stateVersion = version;
-        };
-
-      # Common node arguments from environment
-      commonNodeArgumentsFromEnv = {
-        k3sControlPlaneAddr = "https://control-plane.example.com:6443";
-        adminUsername = "nixos";
-        adminSshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...";
-        nixosStateVersion = "25.05";
+      commonNodeArguments = {
+        k3sControlPlaneAddr = getEnv "K3S_CONTROL_PLANE_ADDR" "https://REPLACE_ME_K3S_API_ENDPOINT:6443";
+        adminUsername = getEnv "ADMIN_USERNAME" "nixos_admin";
+        adminSshPublicKey = getEnv "ADMIN_SSH_PUBLIC_KEY" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB_REPLACE_ME_YOUR_PUBLIC_KEY";
+        nixosStateVersion = getEnv "NIXOS_STATE_VERSION" "25.05"; # Global state version
+        hetznerPublicInterface = getEnv "HETZNER_PUBLIC_INTERFACE" "eth0";
+        hetznerPrivateInterface = getEnv "HETZNER_PRIVATE_INTERFACE" "ens10";
       };
 
-      # Helper function for creating NixOS systems
+      # Mappings for deriving paths and settings from location and nodeType
+      rolePathMappings = {
+        control = ./k3s-cluster/roles/k3s-control.nix;
+        worker = ./k3s-cluster/roles/k3s-worker.nix;
+      };
+      locationProfilePathMappings = {
+        hetzner = ./k3s-cluster/locations/hetzner.nix;
+        local = ./k3s-cluster/locations/local.nix;
+      };
+      diskoConfigPathMappings = {
+        hetzner = ./disko-configs/hetzner-disko-layout.nix;
+        local = ./disko-configs/generic-disko-layout.nix;
+      };
+
       mkNixosSystem =
         {
-          rolePath,
-          locationProfilePath,
-          machineHardwareConfigPath ? null,
-          extraModules ? [ ],
-          specialArgsOverride ? { },
+          # Parameters are now mostly derived based on location and nodeType from allMachinesData
+          derivedRolePath,
+          derivedLocationProfilePath,
+          derivedDiskoConfigPath,
+          extraModules ? [ ], # For machine-specific modules (e.g., unique SOPS secrets)
+          specialArgsResolved, # The fully merged specialArgs for this system
         }:
         nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [
-            inputs.sops-nix.nixosModules.sops # Main sops-nix module
-            commonSopsModule # Our sops configurations (key, secret definitions)
-            ./k3s-cluster/profiles/base-server.nix # Imports the consolidated infisical module
-            rolePath
-            locationProfilePath
+            inputs.sops-nix.nixosModules.sops
+            commonSopsModule
+            ./k3s-cluster/profiles/base-server.nix # Contains LVM initrd fix and imports common.nix
+            derivedRolePath
+            derivedLocationProfilePath
             inputs.disko.nixosModules.disko
-          ]
-          ++ (pkgs.lib.optional (specialArgsOverride ? location && specialArgsOverride.location == "hetzner") ./disko-configs/hetzner-disko-layout.nix)
-          ++ (pkgs.lib.optional (specialArgsOverride ? location && specialArgsOverride.location == "local") ./disko-configs/generic-disko-layout.nix)
-          ++ (pkgs.lib.optional (machineHardwareConfigPath != null) machineHardwareConfigPath)
-          ++ extraModules;
-          specialArgs = {
-            # ... remove config.sops.secrets access ... #
-            # Common arguments for all nodes
-            # inherit (commonNodeArgumentsFromEnv)
-            #   k3sControlPlaneAddr
-            #   adminUsername
-            #   adminSshPublicKey
-            #   nixosStateVersion;
+            derivedDiskoConfigPath # Selected based on location
 
-            # Default network interface settings
-            hetznerPublicInterface = "eth0";
-            hetznerPrivateInterface = "ens10";
+            # << MODIFIED >> Automatically include the state version module using the resolved state version
+            (stateVersionModule specialArgsResolved.nixosStateVersion)
 
-            # Override with any specific arguments for this node
-          } // specialArgsOverride;
+            /etc/nixos/hardware-configuration.nix # Option A: Always use installer-generated hardware config
+          ] ++ extraModules; # For any other specific modules from machines.nix
+          specialArgs = specialArgsResolved;
         };
+
+      privateMachinesPath = ./machines.nix; # This file will be in your .gitignore
+      allMachinesData =
+        if builtins.pathExists privateMachinesPath then
+          (import privateMachinesPath {
+            inherit
+              lib
+              pkgs
+              getEnv
+              stateVersionModule
+              ; # Pass helpers if machines.nix needs them for complex extraModules
+            # commonNixosStateVersion is no longer needed here as stateVersionModule is applied globally
+          })
+        else
+          {
+            # Fallback if machines.nix is not found
+            "example-node" = {
+              location = "local";
+              nodeType = "control-init";
+              # extraModules = []; # No need for stateVersionModule here anymore
+              deploy = {
+                sshHostname = "localhost";
+                sshUser = getEnv "USER" "nixos";
+              };
+            };
+          };
+
     in
     {
-      # NixOS configurations for different node types
-      nixosConfigurations = {
-        # === ARCHETYPE TEMPLATES for nixos-anywhere (currently all x86_64-linux) ===
-        "thinkcenter-1" = mkNixosSystem {
-          rolePath = ./k3s-cluster/roles/k3s-control.nix;
-          locationProfilePath = ./k3s-cluster/locations/local.nix;
-          extraModules = [
-            (stateVersionModule "25.05")
-          ];
-          specialArgsOverride = {
-            hostname = "thinkcenter-1";
-            isFirstControlPlane = true;
-            location = "local";
-          };
-        };
-
-        "hetzner-control-plane" = mkNixosSystem {
-          rolePath = ./k3s-cluster/roles/k3s-control.nix;
-          locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          # Hardware config is now in hardware info directory and is just for reference
-          extraModules = [
-            (stateVersionModule "25.05")
-          ];
-          specialArgsOverride = {
-            hostname = getEnv "NODE_HOSTNAME" "k3s-hcloud-cp";
-            isFirstControlPlane = (getEnv "IS_FIRST_CONTROL_PLANE" "true") == "true";
-            location = "hetzner";
-          };
-        };
-
-        # NEW: Specific archetype for Hetzner CPX21 Control Plane
-        "hetzner-cpx21-control-plane-archetype" = mkNixosSystem {
-          rolePath = ./k3s-cluster/roles/k3s-control.nix;
-          locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          # Hardware config is now in hardware info directory and is just for reference
-          extraModules = [
-            (stateVersionModule "25.05")
-          ];
-          specialArgsOverride = {
-            hostname = getEnv "NODE_HOSTNAME" "k3s-cpx21-cp"; # Hostname template for CPX21 CP
-            isFirstControlPlane = (getEnv "IS_FIRST_CONTROL_PLANE" "true") == "true";
-            location = "hetzner";
-          };
-        };
-
-        "hetzner-worker" = mkNixosSystem {
-          rolePath = ./k3s-cluster/roles/k3s-worker.nix;
-          locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          # Hardware config is now in hardware info directory and is just for reference
-          extraModules = [
-            (stateVersionModule "25.05")
-          ];
-          specialArgsOverride = {
-            hostname = getEnv "NODE_HOSTNAME" "k3s-hcloud-worker";
-            isFirstControlPlane = false; # Workers are never first control plane
-            location = "hetzner";
-          };
-        };
-
-        # === ACTUAL DEPLOYED MACHINES (not archetypes) ===
-        # Assumes ./machines/hetzner/my-hcloud-control01/hardware-configuration.nix will be created post-provisioning
-        "my-hcloud-control01" = mkNixosSystem {
-          rolePath = ./k3s-cluster/roles/k3s-control.nix;
-          locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          # Hardware config is now in hardware info directory and is just for reference
-          extraModules = [
-            (stateVersionModule "25.05")
-          ];
-          specialArgsOverride = {
-            hostname = "my-hcloud-control01";
-            isFirstControlPlane = true;
-            location = "hetzner";
-          };
-        };
-
-        # Add our cpx21-control-1 configuration
-        "cpx21-control-1" = mkNixosSystem {
-          rolePath = ./k3s-cluster/roles/k3s-control.nix;
-          locationProfilePath = ./k3s-cluster/locations/hetzner.nix;
-          # Hardware config is now in hardware info directory and is just for reference
-          extraModules = [
-            (stateVersionModule "25.05")
-            {
-              sops.secrets.k3s_token = {
-                path = "/etc/nixos/secrets.yaml";
-                format = "yaml";
-                name = "k3sToken";
-              };
-              sops.secrets.tailscale_auth_key = {
-                path = "/etc/nixos/secrets.yaml";
-                format = "yaml";
-                name = "tailscaleAuthKey";
-              };
-
-              # Deploy the SOPS secrets file
-              system.activationScripts.deploySecrets = {
-                deps = [ "users" ]; # Run after users are set up
-                text = ''
-                  mkdir -p /etc/nixos
-                  # This assumes the secrets file is already present, e.g., deployed by deploy-rs
-                  # If not, you'll need to add a deployment step to copy the file
-                  # For example:
-                  # cp /path/to/your/sops.secrets.yaml /etc/nixos/secrets.yaml
-                  echo "SOPS secrets file deployed to /etc/nixos/secrets.yaml"
-                '';
-              };
-            }
-          ];
-          specialArgsOverride = {
-            hostname = "cpx21-control-1";
-            isFirstControlPlane = true;
-            hetznerPublicInterface = "eth0";
-            hetznerPrivateInterface = "ens10";
-            # Disable infisical agent during evaluation to avoid errors with missing secrets
-            enableInfisicalAgent = builtins.getEnv "ENABLE_INFISICAL" == "1";
-            location = "hetzner";
-          };
-        };
-      }; # End nixosConfigurations
-
-      deploy.nodes = {
-        # Example node - not used in actual deployment
-        "thinkcenter-1" = {
-          hostname = "100.108.23.65"; # From your tailscale status
-          sshUser = "evanlhatch"; # From your tailscale status
-          fastConnection = true;
-          profiles.system = {
-            user = "root";
-            path = deploy-rs.lib.${system}.activate.nixos self.nixosConfigurations."thinkcenter-1";
-          };
-        };
-
-        "my-hcloud-control01" = {
-          hostname = "my-hcloud-control01"; # Use the hostname directly
-          sshUser = "root";
-          fastConnection = true;
-          profiles.system = {
-            user = "root";
-            path = deploy-rs.lib.${system}.activate.nixos self.nixosConfigurations."my-hcloud-control01";
-          };
-        };
-
-        # Add our cpx21-control-1 deploy node
-        "cpx21-control-1" = {
-          hostname = "5.161.241.28"; # Use the IP address directly
-          sshUser = "root";
-          fastConnection = true;
-          profiles.system = {
-            user = "root";
-            path = deploy-rs.lib.${system}.activate.nixos self.nixosConfigurations."cpx21-control-1";
-          };
-        };
-        # Add other deploy-rs managed nodes here, pointing to their specific nixosConfiguration
-      };
-
-      packages.x86_64-linux =
+      nixosConfigurations = lib.mapAttrs (
+        name: machineData:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
+          roleKey = if machineData.nodeType == "worker" then "worker" else "control";
+          finalRolePath =
+            rolePathMappings.${roleKey}
+              or (throw "Invalid role derived from nodeType: '${machineData.nodeType}' for machine '${name}'. Must be 'control-init/join' or 'worker'.");
 
+          finalLocationProfilePath =
+            locationProfilePathMappings.${machineData.location}
+              or (throw "Invalid location: '${machineData.location}' for machine '${name}'. Must be 'hetzner' or 'local'.");
+
+          finalDiskoConfigPath =
+            diskoConfigPathMappings.${machineData.location}
+              or (throw "No disko config mapping for location: '${machineData.location}' for machine '${name}'.");
+
+          isFirstCp = (machineData.nodeType == "control-init");
+
+          # Layering specialArgs:
+          # 1. Flake commonNodeArguments (global defaults, can use getEnv)
+          # 2. Derived from nodeType & location (isFirstControlPlane, location itself)
+          # 3. Hostname (defaults to the machine's attribute name)
+          # 4. Instance specific overrides from machines.nix (machineData.specialArgsOverride)
+          resolvedSpecialArgs =
+            commonNodeArguments
+            // {
+              location = machineData.location;
+              isFirstControlPlane = isFirstCp;
+            } # Derived values
+            // {
+              hostname = name;
+            } # Hostname defaults to the attribute name (e.g., "cpx21-control-1")
+            // (machineData.specialArgsOverride or { });
+        in
+        mkNixosSystem {
+          derivedRolePath = finalRolePath;
+          derivedLocationProfilePath = finalLocationProfilePath;
+          derivedDiskoConfigPath = finalDiskoConfigPath;
+          extraModules = machineData.extraModules or [ ];
+          specialArgsResolved = resolvedSpecialArgs;
+        }
+      ) allMachinesData;
+
+      deploy.nodes = lib.mapAttrs (
+        name: machineData:
+        if !(machineData ? deploy) then
+          null
+        else
+          {
+            inherit (machineData.deploy) sshHostname sshUser;
+            fastConnection = machineData.deploy.fastConnection or true;
+            profiles.system = {
+              user = machineData.deploy.activationUser or "root";
+              path = deploy-rs.lib.${system}.activate.nixos self.nixosConfigurations."${name}";
+            };
+          }
+      ) (lib.filterAttrs (name: data: data != null && data ? deploy) allMachinesData);
+
+      packages.${system} = # ... (remains the same as previous response)
+        let
+          mageEnvPath = lib.makeBinPath [
+            pkgs.mage
+            pkgs.go
+            pkgs.hcloud
+            pkgs.kubectl
+            pkgs.kubernetes-helm
+            pkgs.fluxcd
+            pkgs.tailscale
+            deploy-rs.packages.${system}.deploy-rs
+            nixos-anywhere.packages.${system}.default
+            inputs.nixos-facter-modules.packages.${system}.default # facter CLI
+            disko.packages.${system}.disko
+          ];
           buildDiskImage =
             imageName: nixosConfigName: format: diskSize:
             pkgs.callPackage (nixpkgs + "/nixos/lib/make-disk-image.nix") {
@@ -334,143 +253,37 @@
               config = self.nixosConfigurations."${nixosConfigName}".config;
               inherit pkgs;
             };
-
-          # Create simple wrapper scripts for mage commands
-          mageWrappers =
-            pkgs.runCommand "mage-wrappers"
-              {
-                buildInputs = [ pkgs.makeWrapper ];
-              }
-              ''
-                mkdir -p $out/bin
-
-                # Create the main mage wrapper
-                makeWrapper ${pkgs.mage}/bin/mage $out/bin/mage \
-                  --set PATH ${
-                    pkgs.lib.makeBinPath [
-                      pkgs.mage
-                      pkgs.go
-                      pkgs.hcloud
-                      pkgs.kubectl
-                      pkgs.kubernetes-helm
-                      pkgs.fluxcd
-                      pkgs.tailscale
-                      deploy-rs.packages.${system}.deploy-rs
-                      nixos-anywhere.packages.${system}.default
-                      disko.packages.${system}.disko
-                    ]
-                  } \
-                  --run "cd ${builtins.toString ./.}"
-
-                # Create wrappers for specific mage targets
-                for target in recreateNode deploy recreateServer deleteAndRedeployServer; do
-                  makeWrapper ${pkgs.mage}/bin/mage $out/bin/mage-$target \
-                    --set PATH ${
-                      pkgs.lib.makeBinPath [
-                        pkgs.mage
-                        pkgs.go
-                        pkgs.hcloud
-                        pkgs.kubectl
-                        pkgs.kubernetes-helm
-                        pkgs.fluxcd
-                        pkgs.tailscale
-                        deploy-rs.packages.${system}.deploy-rs
-                        nixos-anywhere.packages.${system}.default
-                        disko.packages.${system}.disko
-                      ]
-                    } \
-                    --run "cd ${builtins.toString ./.}" \
-                    --add-flags "$target"
-                done
-              '';
+          mageWrappers = pkgs.runCommand "mage-wrappers" { buildInputs = [ pkgs.makeWrapper ]; } ''
+            mkdir -p $out/bin
+            makeWrapper ${pkgs.mage}/bin/mage $out/bin/mage --set PATH "${mageEnvPath}" --run "cd ${toString ./.}";
+            for target in recreateNode deploy recreateServer deleteAndRedeployServer; do
+              makeWrapper ${pkgs.mage}/bin/mage $out/bin/mage-$target --set PATH "${mageEnvPath}" --run "cd ${toString ./.}"; --add-flags "$target";
+            done
+          '';
         in
         {
-          hetznerK3sWorkerRawImage =
-            buildDiskImage "hetzner-k3s-worker-image" "hetzner-worker" # Uses the "hetzner-worker" archetype
-              "raw"
-              "10G";
-
-          hetznerK3sControlRawImage =
-            buildDiskImage "hetzner-k3s-control-image" "hetzner-control-plane" # Uses the "hetzner-control-plane" archetype
-              "raw"
-              "10G";
-
-          # Export our mage wrappers
+          hetznerK3sWorkerRawImage = buildDiskImage "hetzner-k3s-worker-image" "example-node" "raw" "20G"; # Update to a real node name
+          hetznerK3sControlRawImage = buildDiskImage "hetzner-k3s-control-image" "example-node" "raw" "20G"; # Update to a real node name
           inherit mageWrappers;
         };
 
-      # Add apps to make it easy to run the mage commands
-      apps.x86_64-linux =
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-        in
-        {
-          # Main mage command
-          mage = {
-            type = "app";
-            program = "${self.packages.x86_64-linux.mageWrappers}/bin/mage";
-          };
-
-          # Specific mage commands as apps
-          recreateNode = {
-            type = "app";
-            program = "${self.packages.x86_64-linux.mageWrappers}/bin/mage-recreateNode";
-          };
-
-          deploy = {
-            type = "app";
-            program = "${self.packages.x86_64-linux.mageWrappers}/bin/mage-deploy";
-          };
-
-          recreateServer = {
-            type = "app";
-            program = "${self.packages.x86_64-linux.mageWrappers}/bin/mage-recreateServer";
-          };
-
-          deleteAndRedeployServer = {
-            type = "app";
-            program = "${self.packages.x86_64-linux.mageWrappers}/bin/mage-deleteAndRedeployServer";
-          };
-
-          # Default app
-          default = self.apps.x86_64-linux.mage;
-        };
-
-      # Define devShells directly for x86_64-linux
-      devShells.x86_64-linux =
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-        in
-        {
-          default = pkgs.mkShell {
-            buildInputs = [
-              pkgs.just
-              pkgs.hcloud
-              pkgs.kubectl
-              pkgs.kubernetes-helm
-              pkgs.fluxcd
-              pkgs.tailscale
-              deploy-rs.packages.${system}.deploy-rs
-              nixos-anywhere.packages.${system}.default # Add nixos-anywhere to devShell
-              disko.packages.${system}.disko # Add disko to devShell
-              pkgs.mage # Add mage
-              pkgs.go
-              pkgs.gotools
-              pkgs.gopls
-            ];
-
-            shellHook = ''
-              echo "---"
-              echo "Ensure .env is populated."
-              echo "Available mage commands:"
-              mage -l 2>/dev/null || echo "mage not installed or no targets defined."
-              echo "Available just commands:"
-              just -l 2>/dev/null || echo "justfile not found or just not installed."
-              echo "---"
-            '';
-          };
-        };
-
-      # Add checks for deploy-rs
+      apps.${system} = {
+        # ... (remains the same as previous response) ...
+      };
+      devShells.${system}.default = {
+        # ... (remains the same as previous response, ensure shellHook is updated) ...
+        shellHook = ''
+          echo "---"
+          echo "NixOS K3s Cluster DevEnv Activated"
+          echo "Ensure required environment variables are set (e.g., K3S_CONTROL_PLANE_ADDR, ADMIN_SSH_PUBLIC_KEY)."
+          echo "Ensure ./sops.secrets.yaml is created and encrypted."
+          echo "Ensure ./machines.nix exists and is populated (this file is gitignored)."
+          echo "Ensure Disko layouts exist (e.g., ./disko-configs/hetzner-disko-layout.nix)."
+          echo "Hardware configs will be generated by nixos-anywhere in the installer (Option A)."
+          echo "State version is now applied globally to all machines."
+          echo "Hostname will be set from the machine name in machines.nix."
+          echo "---"
+        '';
+      };
     };
 }

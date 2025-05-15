@@ -1,56 +1,88 @@
+# ./k3s-cluster/common.nix
+# Contains settings common to ALL NixOS systems built from this flake.
 {
   config,
   lib,
   pkgs,
-  specialArgs,
   ...
-}:
+}: # specialArgs are available via config.specialArgs
 
-let
-  # Get SSH public key from environment
-  sshPublicKey = builtins.getEnv "ADMIN_SSH_PUBLIC_KEY";
-in
 {
-  time.timeZone = "Etc/UTC";
-  i18n.defaultLocale = "en_US.UTF-8";
+
+  # \----- Hostname Configuration -----
+
+  # Set from specialArgs.hostname, which defaults to the machine's name from machines.nix (via flake.nix)
+  networking.hostName = lib.mkDefault config.specialArgs.hostname;
+
+  # \----- Localization -----
+
+  time.timeZone = "Etc/UTC"; # Consider setting your actual timezone, e.g., "America/Denver"
+  i18n.defaultLocale = "en\_US.UTF-8";
   console.keyMap = "us";
 
-  users.users.nixos = {
+  # \----- Admin User Account -----
+
+  # Create the admin user specified in commonNodeArguments (via specialArgs)
+  users.users.${config.specialArgs.adminUsername} = {
     isNormalUser = true;
     extraGroups = [
       "wheel"
       "networkmanager"
       "docker"
-    ]; # Add docker group if needed
-    openssh.authorizedKeys.keys = [ sshPublicKey ];
+    ];
+    openssh.authorizedKeys.keys = [ config.specialArgs.adminSshPublicKey ];
+    shell = pkgs.fish;
   };
-  
-  # Also add the SSH key to the root user for direct SSH access
-  users.users.root = {
-    openssh.authorizedKeys.keys = [ sshPublicKey ];
-  };
-  
-  security.sudo.wheelNeedsPassword = false;
 
-  services.openssh = {
-    enable = true;
+  # Add the same admin SSH key to the root user for initial provisioning or recovery
+
+  users.users.root.openssh.authorizedKeys.keys = [ config.specialArgs.adminSshPublicKey ];
+
+  # Sudo privileges for the wheel group (adminUser is typically in 'wheel')
+
+  security.sudo.wheelNeedsPassword = false; # Set to true to require password for sudo
+
+  # \----- Global Nix Configuration -----
+
+  nixpkgs.config.allowUnfree = true; # Allow unfree packages if needed globally
+
+  nix = {
+    package = pkgs.nixFlakes; # Ensures the Flakes-aware Nix package is used
     settings = {
-      PasswordAuthentication = false;
-      # Allow root login with public key authentication
-      PermitRootLogin = "prohibit-password"; # This already allows public key authentication for root
-      PubkeyAuthentication = true;
+      auto-optimise-store = true;
+      experimental-features = [
+        "nix-command"
+        "flakes"
+      ];
+      # Add the admin user to trusted-users to perform Nix operations without sudo (e.g., nix build)
+      trusted-users = [
+        "root"
+        "@wheel"
+        config.specialArgs.adminUsername
+      ];
+    };
+    # Automatic garbage collection
+    gc = {
+      automatic = true;
+      dates = "weekly";
+      options = "--delete-older-than 30d";
     };
   };
 
+  # \----- Time Synchronization -----
+
+  services.timesyncd.enable = true; # Essential for most systems
+
+  # \----- Basic System Environment -----
+
+  # Minimal set of universally useful tools; more can go in base-server.nix
+
   environment.systemPackages = with pkgs; [
-    git
+    gitMinimal
+    micro
     curl
     wget
-    htop
-    vim
-    tmux
-    jq
   ];
 
-  nixpkgs.config.allowUnfree = true;
+  environment.variables.EDITOR = "micro";
 }

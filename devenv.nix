@@ -6,12 +6,12 @@
     # Core tools
     go
     mage
-    
+
     # Deployment tools
     deploy-rs
     nixos-anywhere
     disko
-    
+
     # Cloud tools
     hcloud
     kubectl
@@ -30,7 +30,7 @@
   # Load environment variables from .env file
   dotenv.enable = true;
   dotenv.filename = ".env";
-  
+
   # Pre-install Go dependencies
   enterShell = ''
     echo "K3s NixOS Configs Development Environment"

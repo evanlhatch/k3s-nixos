@@ -109,15 +109,14 @@
         local = ./disko-configs/generic-disko-layout.nix;
       };
 
-      # Path to the dummy hardware config for local pure checks
-      dummyHardwareConfigPath = ./dummy-hardware-config.nix;
+      dummyHardwareConfigPath = ./dummy-hardware-config.nix; # Ensure this file exists
 
       mkNixosSystem =
         {
           derivedRolePath,
           derivedLocationProfilePath,
           derivedDiskoConfigPath,
-          hardwareConfigModulePath, # This will be the resolved path to the hardware config module
+          hardwareConfigModulePath,
           extraModules ? [ ],
           specialArgsResolved,
         }:
@@ -126,13 +125,13 @@
           modules = [
             inputs.sops-nix.nixosModules.sops
             commonSopsModule
-            ./k3s-cluster/profiles/base-server.nix # Imports common.nix (which sets hostname, user, etc.)
+            ./k3s-cluster/profiles/base-server.nix
             derivedRolePath
             derivedLocationProfilePath
             inputs.disko.nixosModules.disko
             derivedDiskoConfigPath
-            (stateVersionModule specialArgsResolved.nixosStateVersion) # Global state version
-            hardwareConfigModulePath # Use the explicitly passed hardware config module
+            (stateVersionModule specialArgsResolved.nixosStateVersion)
+            hardwareConfigModulePath
           ] ++ extraModules;
           specialArgs = specialArgsResolved;
         };
@@ -146,15 +145,13 @@
               pkgs
               getEnv
               stateVersionModule
-              ; # Pass helpers to machines.nix
+              ;
           })
         else
           {
-            # Fallback if machines.nix is not found (e.g., for CI or new users checking out the flake)
             "example-node" = {
               location = "local";
               nodeType = "control-init";
-              # For local pure checks, example-node explicitly uses the dummy hardware config
               _hardwareConfigModulePath_override = dummyHardwareConfigPath;
               deploy = {
                 sshHostname = "localhost";
@@ -169,7 +166,10 @@
         name: machineData:
         let
           roleKey = if machineData.nodeType == "worker" then "worker" else "control";
-          finalRolePath = rolePathMappings.${roleKey} example;
+          # Corrected line: removed the stray 'example' and ensured 'or (throw ...)' is applied correctly
+          finalRolePath =
+            rolePathMappings.${roleKey}
+              or (throw "Invalid role derived from nodeType: '${machineData.nodeType}' for machine '${name}'. Must be 'control-init/join' or 'worker'.");
 
           finalLocationProfilePath =
             locationProfilePathMappings.${machineData.location}
@@ -192,9 +192,6 @@
             }
             // (machineData.specialArgsOverride or { });
 
-          # Determine the hardware configuration module path:
-          # 1. If _hardwareConfigModulePath_override is set in machineData (e.g., for example-node), use that path.
-          # 2. Otherwise, default to /etc/nixos/hardware-configuration.nix (for "Option A" during nixos-anywhere deployment).
           finalHardwareConfigModulePath =
             machineData._hardwareConfigModulePath_override or /etc/nixos/hardware-configuration.nix;
 
@@ -203,14 +200,12 @@
           derivedRolePath = finalRolePath;
           derivedLocationProfilePath = finalLocationProfilePath;
           derivedDiskoConfigPath = finalDiskoConfigPath;
-          hardwareConfigModulePath = finalHardwareConfigModulePath; # Pass the determined path
+          hardwareConfigModulePath = finalHardwareConfigModulePath;
           extraModules = machineData.extraModules or [ ];
           specialArgsResolved = resolvedSpecialArgs;
         }
       ) allMachinesData;
 
-      # deploy.nodes, packages, apps, devShells (These remain as in the comprehensive version from Message #16,
-      # just ensure inputs.nixos-facter-modules.packages.${system}.default is in devShells.default.buildInputs)
       deploy.nodes = lib.mapAttrs (
         name: machineData:
         if !(machineData ? deploy) then
@@ -258,7 +253,7 @@
           '';
         in
         {
-          hetznerK3sWorkerRawImage = buildDiskImage "hetzner-k3s-worker-image" "example-node" "raw" "20G"; # Update example-node if it's not a worker
+          hetznerK3sWorkerRawImage = buildDiskImage "hetzner-k3s-worker-image" "example-node" "raw" "20G";
           hetznerK3sControlRawImage = buildDiskImage "hetzner-k3s-control-image" "example-node" "raw" "20G";
           inherit mageWrappers;
         };

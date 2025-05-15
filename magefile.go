@@ -401,6 +401,37 @@ func DeleteAndRedeployServer(serverName string, flakeConfigName string, ipv4Enab
 	return nil
 }
 
+// DecryptSecrets decrypts the sops.secrets.yaml file and prints its content.
+// Requires the AGE_PRIVATE_KEY environment variable to be set.
+func DecryptSecrets() error {
+	fmt.Println("INFO: Decrypting sops.secrets.yaml...")
+
+	// The init() function should have loaded AGE_PRIVATE_KEY from .env
+	ageKey := os.Getenv("AGE_PRIVATE_KEY")
+	if ageKey == "" {
+		// Check again, in case init() didn't run or .env was missing the key
+		fmt.Println("ERROR: AGE_PRIVATE_KEY environment variable is not set.")
+		fmt.Println("Please ensure it is defined in your .env file and you have run 'direnv allow' or manually exported it.")
+		return fmt.Errorf("AGE_PRIVATE_KEY not set")
+	}
+
+	// sops expects the key in SOPS_AGE_KEY, so we set it for the sops command.
+	env := map[string]string{
+		"SOPS_AGE_KEY": ageKey,
+	}
+
+	// Run the sops decrypt command
+	err := sh.RunWithV(env, "sops", "--decrypt", "sops.secrets.yaml")
+	if err != nil {
+		return fmt.Errorf("failed to decrypt sops.secrets.yaml: %w", err)
+	}
+
+	fmt.Println("INFO: Decryption complete.")
+	fmt.Println("WARNING: The decrypted secrets were printed to your console. Be mindful of your environment.")
+
+	return nil
+}
+
 // Alias for CheckFlake
 var Check = CheckFlake
 

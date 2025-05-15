@@ -72,11 +72,11 @@ For more direct control or debugging, you can use `deploy-rs` and `nixos-anywher
     echo "$AGE_PRIVATE_KEY" > /tmp/nixos-extra/etc/sops/age/key.txt && \
     chmod 600 /tmp/nixos-extra/etc/sops/age/key.txt && \
     nixos-anywhere -f .#thinkcenter-1 \
-      --generate-hardware-config nixos-facter /etc/nixos/hardware-configuration.nix \
+      --generate-hardware-config nixos-facter /facter.json \
       --extra-files /tmp/nixos-extra \
       --copy-host-keys \
       --debug \
-      root@100.108.75.64 # Replace with the actual SSH target (user@host)
+      root@5.161.198.65 # Replace with the actual SSH target (user@host)
     ```
     This complex command manually sets up the AGE key for the installer, tells `nixos-anywhere` to use `nixos-facter` to generate the hardware config, copies existing SSH host keys, enables debug output, and specifies the flake target (`.#thinkcenter-1`) and the SSH destination (`root@100.108.75.64`). The `mage recreateNode` command wraps this complexity for easier use.
 

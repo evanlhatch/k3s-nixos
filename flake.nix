@@ -148,10 +148,13 @@
             derivedLocationProfilePath
             inputs.disko.nixosModules.disko
             derivedDiskoConfigPath
+            { disko.enable = true; } # <-- Explicitly enable disko
             (stateVersionModule specialArgsResolved.nixosStateVersion)
             hardwareConfigModulePath
             # If you intend to use the nixos-facter NixOS module, add it here:
             # inputs.nixos-facter-modules.nixosModules.facter
+            # And set the report path:
+            # { config.facter.reportPath = "/tmp/facter.json"; } # Or whatever path you used in nixos-anywhere
           ] ++ extraModules;
           specialArgs = specialArgsResolved;
         };
@@ -251,7 +254,7 @@
             pkgs.fluxcd
             pkgs.tailscale
             deploy-rs.packages.${system}.deploy-rs
-            nixos-anywhere.packages.${system}.default
+            inputs.nixos-anywhere.packages.${system}.default # <-- Corrected: Referencing nixos-anywhere package input
             inputs.nixos-facter-cli.packages.${system}.default # <-- Corrected: Reference 'default' package from the new 'nixos-facter-cli' input
             disko.packages.${system}.disko
           ];
@@ -330,7 +333,7 @@
           pkgs.fluxcd
           pkgs.tailscale
           deploy-rs.packages.${system}.deploy-rs
-          nixos-anywhere.packages.${system}.default
+          inputs.nixos-anywhere.packages.${system}.default # <-- Corrected: Referencing nixos-anywhere package input
           inputs.nixos-facter-cli.packages.${system}.default # <-- Corrected: Reference 'default' package from the new 'nixos-facter-cli' input
           disko.packages.${system}.disko
           pkgs.mage
